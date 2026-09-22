@@ -140,6 +140,25 @@ fn the_dsl_base_ships_with_the_machine() {
 }
 
 #[test]
+fn a_language_can_register_machine_readable_words_and_literals() {
+    let out = answer(
+        r#"
+        class ProbeDSL < JohnnyBtDSL::Base
+          describe "a probe"
+          sample "probe.rb"
+          document :limit, signature: "limit <number>", description: "a cut", examples: ["limit 80.pct"]
+          literal :pct, syntax: "80.pct", description: "a share", examples: ["80.pct"]
+        end
+        "#,
+        "JohnnyBtDSL.manifest",
+    );
+
+    assert!(out.contains(r#""symbols":[{"name":"limit""#), "{out}");
+    assert!(out.contains(r#""literals":[{"name":"pct""#), "{out}");
+    assert!(out.contains(r#""limit 80.pct""#), "{out}");
+}
+
+#[test]
 fn a_failure_is_pinned_to_the_statement_even_through_the_cores_own_ruby() {
     // A raise from inside a block handed to `Hash#each` has the core's own
     // `mrblib/hash.rb` on top of the stack: written in Ruby since mruby

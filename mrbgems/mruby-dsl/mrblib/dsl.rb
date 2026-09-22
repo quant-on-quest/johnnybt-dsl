@@ -16,7 +16,8 @@
 # envelope, `JohnnyBtDSL.ir`:
 #
 #     {"version": 1,
-#      "dsls":         [{"name", "description", "doc", "sample", "source"}],
+#      "dsls":         [{"name", "description", "doc", "sample", "source",
+#                        "symbols", "literals"}],
 #      "declarations": {"<dsl name>": [...]},
 #      "failures":     [{"dsl", "declaration", "message", "file", "line",
 #                        "backtrace"}]}
@@ -118,6 +119,39 @@ module JohnnyBtDSL
         @sample
       end
 
+      # A machine-readable description of one word in the language. The
+      # source still carries its full prose comments; this is the small,
+      # exact subset a host must not make an AI guess: spelling, signature,
+      # and runnable examples.
+      def document(name, signature: nil, description: "", examples: [])
+        documents << {
+          "name" => name.to_s,
+          "signature" => signature,
+          "description" => description.to_s,
+          "examples" => examples.map(&:to_s),
+        }
+      end
+
+      # A typed literal shared by words: `5000.w`, `80.pct`, and similar
+      # spellings belong to the hosted language rather than a particular
+      # strategy declaration.
+      def literal(name, syntax:, description: "", examples: [])
+        literals << {
+          "name" => name.to_s,
+          "syntax" => syntax.to_s,
+          "description" => description.to_s,
+          "examples" => examples.map(&:to_s),
+        }
+      end
+
+      def documents
+        @documents ||= []
+      end
+
+      def literals
+        @literals ||= []
+      end
+
       # This language as data, for the manifest.
       #
       # Raises when the language declares no sample: a language nobody can
@@ -135,6 +169,8 @@ module JohnnyBtDSL
           "doc" => doc,
           "sample" => sample,
           "source" => source,
+          "symbols" => documents,
+          "literals" => literals,
         }
       end
 
