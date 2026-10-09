@@ -40,6 +40,15 @@ end
 words = lambda do |conf|
   conf.gembox 'full-core'
 
+  # Use our correctly rounded reader for both literal compilation and String#to_f.
+  # An explicit object task replaces the upstream rule without editing its tree.
+  decimal_reader = File.expand_path('src/readfloat.c', __dir__)
+  decimal_header = File.expand_path('mrbgems/mruby-json/include/decimal.h', __dir__)
+  decimal_object = conf.objfile("#{conf.build_dir}/src/readfloat")
+  file decimal_object => [decimal_reader, decimal_header, __FILE__] do |task|
+    conf.cc.run(task.name, decimal_reader)
+  end
+
   # Our own gems: JSON generation, and the DSL base class. Both are
   # infrastructure, not vocabulary — what a language *says* stays with
   # whoever defines it.

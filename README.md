@@ -44,6 +44,16 @@ mruby 的构建会跑它刚编出来的 `mrbc`，所以每一格都得在自己�
 一次 `run` 一个解释器：一份文件定义的东西不会漏进下一份。几段之间共用一个
 编译上下文，所以局部变量跨得过去 —— 它们像一段程序，不像几份互不相干的文件。
 
+通用能力也由本包提供，不需要宿主框架注入：
+
+- `float64("…")`：裸 VM 内置的精确标量声明 helper。
+- `loads(text)` / `decode_float64(value)`：JSON IR 的保留叶子解码与有限值检查。
+- `export_schema(sources)`：有超时的隔离词库元信息导出，不运行使用方配置。
+- `builtin_sources()`：已安装内置词源码，供文档与源码跳转使用。
+
+`words/float64.rb` 同一份文件编译进 VM 并随 wheel 发布；无两份 Ruby 定义。
+这些通用能力不依赖 `johnnybt`。宿主只负责自己的词库发现、声明绑定和图接口。
+
 ## 里面有什么
 
 | 件 | 做什么 |
@@ -79,3 +89,63 @@ minirake。`vendor/mruby` 不进 git，第一次 `cargo build` 自己取。
 本包 MIT（见 `LICENSE`）。wheel 里静态链接了 **mruby**（MIT，见 `LICENSE-mruby`，
 版权归 mruby developers）；两个 mrbgem（`mruby-json`、`mruby-dsl`）是本仓库自己写的，
 同样 MIT。
+
+## 配置元编程基类
+
+`JohnnyBtDSL::Config` 是市场中立的配置对象基类，不会被注册为一门语言。
+字段／嵌套／自定义词的声明同时生成行为、校验与可反射 schema。
+`JohnnyBtDSL::Base.entry` 负责绑定入口、采集显式 IR 和定位失败语句。
+
+```ruby
+class FactorConfig < JohnnyBtDSL::Config
+  field :reference, type: String, positional: true, required: true,
+    doc: "Factor reference"
+  field :weight, type: Numeric, default: 1,
+    doc: "Scoring weight", impact: :strategy
+end
+
+class ResearchConfig < JohnnyBtDSL::Config
+  field :name, type: String, positional: true, required: true,
+    doc: "Declaration title"
+  many :factors, of: FactorConfig, item: :use, doc: "Ordered factors"
+end
+
+class ResearchDSL < JohnnyBtDSL::Base
+  sample "research.rb"
+  entry :research, of: ResearchConfig, doc: "Declare a research configuration"
+end
+
+research "example" do
+  factors do
+    use("volume.bias").weight(0.7)
+  end
+end
+```
+
+`field` 支持原始类型、required、nullable、默认值、min/max/enum、doc、impact、
+invariants；`one` / `many` 声明嵌套；`word` 同时定义参数和实现；
+`validates` 的任意 Ruby 谓词在 schema 中明确标为 runtime-only。
+默认字段只影响访问器，`to_h` 默认不写入省略值；整数不转换成浮点。
+继承不共享实例默认容器，显式字段重定义要求 `override: true`。
+`word` 实现块的参数默认值由 schema 注入；兼容绑定已有方法时保留其原默认行为，
+不要复制一套原实现／Python 模板拥有的默认值。
+
+`Config.schema` 导出配置类型；`JohnnyBtDSL.manifest` 导出语言入口与可达配置树，
+含字段／参数说明、约束、来源、返回类型和 block 类型。JSON 是自动导出格式，
+不是需要作者手动维护的另一份定义。现有收集器可使用 `entry(existing: true)`
+和同文件 `word` 绑定保持原 IR，逐步迁入元编程 API。
+
+## 浮点契约（0.2.0 起）
+
+源码字面量、`String#to_f`／`Float(...)` 和 JSON 读取均使用 C locale 的
+正确舍入 binary64 转换。构建时使用本仓库的 `src/readfloat.c` 替换上游的
+近似 reader 对象，不修改 vendor 源码；禁止编译为 float32。
+JSON 输出使用 17 位有效数字保证往返，保留浮点类型与负零，拒绝 NaN／Infinity。
+不依赖 mruby `to_s` 或 `sprintf` 的展示文本来传输数值。
+
+这修复配置解析和传输，不承诺 Ruby 与 Python 的不同计算表达式逐位等价，
+也不会修复已经用旧引擎编译的字节码。升级引擎后重新编译 DSL，清理自己的
+字节码缓存；不要未经验收改写历史配置或放宽对齐标准。
+
+Rust 测试同时检查源码、预编译字节码和 JSON 往返，包括有符号零、subnormal、
+相邻浮点数和最大有限值。发布流程也应从 wheel 安装后运行 Python 位模式测试。

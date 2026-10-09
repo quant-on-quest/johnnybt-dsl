@@ -6,7 +6,7 @@ assert('JSON.generate on the basic types') do
   assert_equal 'true', JSON.generate(true)
   assert_equal 'false', JSON.generate(false)
   assert_equal '10', JSON.generate(10)
-  assert_equal '0.2', JSON.generate(0.2)
+  assert_equal '0.20000000000000001', JSON.generate(0.2)
   assert_equal '"a"', JSON.generate("a")
   assert_equal '"name"', JSON.generate(:name)
 end
@@ -83,4 +83,19 @@ end
 assert('JSON.parse keeps integers integral when they fit') do
   assert_equal Integer, JSON.parse("9007199254740993").class
   assert_equal Float, JSON.parse("1e400").class
+end
+
+assert('JSON preserves floating type, signed zero and precision') do
+  assert_equal '1.0', JSON.generate(1.0)
+  assert_equal '-0.0', JSON.generate(-0.0)
+  ["0.7", "0.3", "0.010000000000000002", "5e-324"].each do |text|
+    value = JSON.parse(text)
+    assert_equal value, JSON.parse(JSON.generate(value))
+    assert_equal value, text.to_f
+  end
+end
+
+assert('JSON refuses nonfinite float output') do
+  assert_raise(ArgumentError) { JSON.generate(1.0 / 0.0) }
+  assert_raise(ArgumentError) { JSON.generate(0.0 / 0.0) }
 end

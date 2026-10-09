@@ -50,7 +50,39 @@ module JohnnyBtDSL
 
     # What languages exist and where their docs live, as JSON.
     def manifest
-      { "version" => VERSION, "dsls" => dsls.map(&:to_meta) }.to_json
+      {
+        "version" => VERSION, "dsls" => dsls.map(&:to_meta),
+        "utilities" => utilities.map { |word| Config.public_definition(word) },
+        "rules" => rules,
+      }.to_json
+    end
+
+    def rules(*values)
+      @rules ||= []
+      @rules.concat(values.map(&:to_s)) unless values.empty?
+      @rules.uniq
+    end
+
+    def utilities
+      @utilities ||= []
+    end
+
+    # Attach schema and argument validation to a global helper declared beside it.
+    def utility(name, doc:, arguments: [], keywords: [], returns: :any, invariants: [])
+      spec = Config.definition(name, kind: :utility, doc: doc, invariants: invariants,
+                               source: Config.location(caller.first))
+      spec["arguments"] = arguments.map { |item| Config.parameter(item) }
+      spec["keywords"] = keywords.map { |item| Config.parameter(item) }
+      spec["returns"] = Config.type_name(returns)
+      spec["open_keywords"] = false
+      internal = "__jbt_utility_#{name}".to_sym
+      Object.send(:alias_method, internal, name)
+      Object.send(:define_method, name) do |*values, **named, &body|
+        Config.validate_call(spec, values, named, body)
+        send(internal, *values, **named, &body)
+      end
+      utilities << spec
+      spec
     end
 
     # The envelope a host reads after running some files, as JSON.
@@ -129,12 +161,76 @@ module JohnnyBtDSL
                 "（`sample File.expand_path(\"examples/<名字>.rb\", File.dirname(__FILE__))`），" \
                 "它就是这门语言的文档。"
         end
-        {
+        meta = {
           "name" => dsl_name,
           "description" => describe,
           "doc" => doc,
           "sample" => sample,
           "source" => source,
+        }
+        meta["schema"] = schema unless entries.empty? && documents.empty?
+        meta
+      end
+
+      # Bind an entry to one configuration schema. Existing collectors may be
+      # registered explicitly while retaining their established IR implementation.
+      def entries
+        @entries ||= []
+      end
+
+      def documents
+        @documents ||= []
+      end
+
+      def document(type)
+        raise ArgumentError, "A configuration type must inherit JohnnyBtDSL::Config" unless type <= Config
+        documents << type unless documents.include?(type)
+        type
+      end
+
+      def entry(name, of:, doc:, arguments: nil, existing: false, &implementation)
+        document(of)
+        spec = Config.definition(name, kind: :entry, doc: doc, source: Config.location(caller.first))
+        spec["arguments"] = if arguments
+          arguments.map { |field| Config.parameter(field) }
+        else
+          of.positional_fields.map { |field| Config.public_definition(field) }
+        end
+        spec["keywords"] = []
+        spec["open_keywords"] = true
+        spec["block"] = of.name.to_s
+        spec["returns"] = existing ? "any" : of.name.to_s
+        entries << spec
+        language = self
+        internal = "__jbt_entry_#{name}_#{object_id}".to_sym
+        Object.send(:alias_method, internal, name) if existing
+        Object.send(:define_method, name) do |*values, **named, &body|
+          begin
+            of.validate_call(spec, values, named, body)
+            if existing
+              send(internal, *values, **named, &body)
+            elsif implementation
+              implementation.call(*values, **named, &body)
+            else
+              configuration = of.new(*values, **named)
+              configuration.instance_eval(&body) if body
+              configuration.validate!
+              language.declare(configuration.to_h)
+              configuration
+            end
+          rescue StandardError => error
+            language.trouble(error.message, error.backtrace, declaration: values.first.to_s)
+          end
+        end
+        spec
+      end
+
+      def schema
+        seen = {}
+        {
+          "version" => 1,
+          "entries" => entries.map { |entry| Config.public_definition(entry) },
+          "documents" => documents.flat_map { |type| type.documents(seen) },
         }
       end
 
@@ -162,6 +258,13 @@ module JohnnyBtDSL
       def trouble(message, backtrace = nil, declaration: nil)
         frames = (backtrace || []).map(&:to_s)
         own = JohnnyBtDSL.dsls.map(&:source).compact
+        JohnnyBtDSL.dsls.each do |language|
+          language.schema["documents"].each do |document|
+            document["fields"].each { |field| own << field["source"]["path"] }
+            document["validations"].each { |check| own << check["source"]["path"] }
+          end
+          language.entries.each { |entry| own << entry["source"]["path"] }
+        end
         # Skip the languages' own frames AND the interpreter's built-in
         # Ruby: a raise inside `each`'s block otherwise pins the failure
         # to hash.rb. The core reports its Ruby as a bare `mrblib/...`

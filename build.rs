@@ -48,7 +48,9 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=build_config.rb");
     println!("cargo:rerun-if-changed=src/shim.c");
+    println!("cargo:rerun-if-changed=src/readfloat.c");
     println!("cargo:rerun-if-changed=mrbgems");
+    println!("cargo:rerun-if-changed=python/johnnybt_dsl/words");
     println!("cargo:rerun-if-env-changed=MRUBY_DIR");
 
     let source = match env::var_os("MRUBY_DIR") {

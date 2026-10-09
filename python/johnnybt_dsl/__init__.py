@@ -1,9 +1,9 @@
 """An mruby virtual machine, ready to use.
 
-The package provides the machine and nothing else: run some chunks of Ruby
-in order, then one expression, and get back the string it produced. What
-those chunks define is yours — words, modules, whatever shape of answer you
-want. A language baked in here would make one library serve one project.
+The package provides the machine, generic configuration metaprogramming,
+exact scalar transport and schema export. Market/project vocabulary stays
+with the host: run Ruby chunks and return their chosen string or decode
+their JSON IR with ``loads``.
 
 Installing needs neither a C compiler nor Ruby: the wheel ships mruby
 already compiled in.
@@ -24,15 +24,34 @@ from typing import TYPE_CHECKING
 
 from johnnybt_dsl._lib import compile as _compile
 from johnnybt_dsl._lib import run as _run
+from johnnybt_dsl.scalars import decode_float64
+from johnnybt_dsl.schema import builtin_sources, export_schema
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-__all__ = ["DSLError", "compile", "run", "run_file"]
+__all__ = ["DSLError", "builtin_sources", "compile", "decode_float64", "export_schema", "loads", "run", "run_file"]
 
 
 class DSLError(Exception):
     """Some Ruby did not run — the message carries its own error."""
+
+
+def loads(text: str) -> object:
+    """Decode JSON IR and restore the language's reserved exact scalar leaves.
+
+    Args:
+        text: JSON transport produced by the language engine.
+
+    Returns:
+        Decoded data with finite exact scalar leaves restored to Python float64.
+
+    Raises:
+        ValueError: If JSON or a reserved scalar leaf is invalid.
+    """
+    import json
+
+    return decode_float64(json.loads(text))
 
 
 def compile(source: str, name: str = "<chunk>") -> bytes:  # noqa: A001 - it compiles; the builtin is not what a caller means here

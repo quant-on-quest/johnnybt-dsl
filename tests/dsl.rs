@@ -180,6 +180,41 @@ fn json_comes_from_the_gem_we_ship() {
 }
 
 #[test]
+fn float_literals_match_decimal_conversion_before_serialization() {
+    for text in ["0.7", "0.3", "0.010000000000000002", "0.00010000000000000002", "1.0000000000000003e-5"] {
+        let expression = format!(r#"({text} == JSON.parse("{text}")).to_s"#);
+        assert_eq!(answer("", &expression), "true", "{text}");
+    }
+}
+
+#[test]
+fn finite_floats_round_trip_bit_for_bit_from_source_and_bytecode() {
+    for text in [
+        "0.0", "-0.0", "0.7", "0.3", "0.010000000000000002",
+        "0.00010000000000000002", "1.0000000000000003e-5",
+        "5e-324", "2.2250738585072014e-308", "1.7976931348623157e308",
+        "9007199254740992.0", "1.0000000000000002",
+    ] {
+        let source = format!("$value = {text}");
+        let bytecode = compile_source(&source, "float.rb").expect("the literal compiles");
+        let expected = text.parse::<f64>().unwrap().to_bits();
+        for chunk in [Chunk::Source(&source, "float.rb"), Chunk::Bytecode(&bytecode, "float.rb")] {
+            let json = run_chunks(&[chunk], "$value.to_json", None).expect("the float serializes");
+            let actual = json.parse::<f64>().unwrap().to_bits();
+            assert_eq!(actual, expected, "{text} became {json}");
+        }
+    }
+}
+
+#[test]
+fn json_rejects_nonfinite_float_values() {
+    for expression in ["(1.0 / 0.0).to_json", "(-1.0 / 0.0).to_json", "(0.0 / 0.0).to_json"] {
+        let error = run_chunks(&[], expression, None).expect_err("JSON cannot contain nonfinite values");
+        assert!(error.0.contains("finite"), "{error}");
+    }
+}
+
+#[test]
 fn a_context_reaches_the_program_as_a_global() {
     // The host hands a JSON blob; the program reads `$johnny_context`.
     // The engine neither parses nor cares what is in it.

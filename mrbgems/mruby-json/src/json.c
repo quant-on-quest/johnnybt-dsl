@@ -11,8 +11,13 @@
  * otherwise, errors are ArgumentError naming the byte offset.
  */
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include <stdlib.h>
 #include <string.h>
+#include "decimal.h"
 
 #include <mruby.h>
 #include <mruby/array.h>
@@ -73,9 +78,25 @@ static void json_write(mrb_state *mrb, mrb_value out, mrb_value value, int depth
       mrb_str_cat_lit(mrb, out, "true");
       return;
     case MRB_TT_INTEGER:
-    case MRB_TT_FLOAT:
       json_cat_to_s(mrb, out, value);
       return;
+    case MRB_TT_FLOAT: {
+      double number = (double)mrb_float(value);
+      if (!isfinite(number)) {
+        mrb_raise(mrb, E_ARGUMENT_ERROR, "JSON float values must be finite");
+      }
+      char decimal[32];
+      int length = johnny_decimal_write(decimal, sizeof(decimal), number);
+      if (length < 0 || (size_t)length >= sizeof(decimal)) {
+        mrb_raise(mrb, E_ARGUMENT_ERROR, "Cannot format JSON float");
+      }
+      mrb_str_cat(mrb, out, decimal, length);
+      /* Preserve floating type and negative zero across JSON parsing. */
+      if (!strchr(decimal, '.') && !strchr(decimal, 'e') && !strchr(decimal, 'E')) {
+        mrb_str_cat_lit(mrb, out, ".0");
+      }
+      return;
+    }
     case MRB_TT_STRING:
       json_quote(mrb, out, RSTRING_PTR(value), RSTRING_LEN(value));
       return;
@@ -273,7 +294,7 @@ static mrb_value json_read_number(json_reader *j) {
       return mrb_int_value(j->mrb, (mrb_int)v);
     }
   }
-  return mrb_float_value(j->mrb, strtod(buf, NULL));
+  return mrb_float_value(j->mrb, johnny_decimal_read(buf, NULL));
 }
 
 static mrb_value json_read_literal(json_reader *j, const char *word, size_t length, mrb_value value) {
