@@ -45,6 +45,21 @@ class ScalarTests(unittest.TestCase):
         self.assertTrue(source.is_file())
         self.assertIn("def float64", source.read_text())
 
+    def test_builtin_schema_keeps_scalar_invariants_without_global_authoring_rules(self) -> None:
+        from johnnybt_dsl import export_schema
+
+        manifest = export_schema(())
+        self.assertEqual(manifest["rules"], [])
+        scalar = next(item for item in manifest["utilities"] if item["name"] == "float64")
+        self.assertEqual(
+            scalar["invariants"],
+            [
+                "Keep the decimal text, including signed zero and subnormal values.",
+                "Do not use this tagged leaf in Ruby arithmetic.",
+                "Do not remove accepted exact leaves without bit-for-bit and Program identity verification.",
+            ],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -18,12 +18,4 @@ if JohnnyBtDSL.const_defined?(:Config)
       "Do not use this tagged leaf in Ruby arithmetic.",
       "Do not remove accepted exact leaves without bit-for-bit and Program identity verification.",
     ]
-  JohnnyBtDSL.rules(
-    "Read the configuration schema and the host's authoring contract before changing declarations.",
-    "Changing accepted values, order or scalar types is a semantic change, not formatting.",
-    "Preserve exact numeric values during syntax-only changes; do not hide differences with tolerance.",
-    "Configuration declarations collect data; execution algorithms belong to the host.",
-    "Custom Ruby validators are runtime-only unless their constraints are represented in the schema.",
-    "Unknown or dynamic keys are not implicitly safe to change; validate edited declarations and run owning tests.",
-  )
 end
