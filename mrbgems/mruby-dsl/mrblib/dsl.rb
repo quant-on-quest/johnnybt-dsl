@@ -287,7 +287,8 @@ module JohnnyBtDSL
 
       # Whether a backtrace frame is the interpreter's own Ruby.
       def interpreter?(frame)
-        frame.start_with?("mrblib/") || frame.include?("/mrblib/")
+        path = frame.tr("\\", "/")
+        path.start_with?("mrblib/") || path.include?("/mrblib/")
       end
 
       # The file part of one backtrace frame.

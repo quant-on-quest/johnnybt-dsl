@@ -93,6 +93,19 @@ end
                 self.assertEqual(failure["file"], "example.rb")
                 self.assertEqual(failure["line"], 1)
 
+    def test_windows_internal_frames_are_skipped_without_rewriting_user_paths(self) -> None:
+        source = r"""
+ExampleDSL.trouble("invalid", [
+  'C:\build\mrbgems\mruby-dsl\mrblib\config.rb:42',
+  'mrblib\hash.rb:12',
+  'C:\project\example.rb:7'
+])
+"""
+        failure = self.result(source)["failures"][0]
+        self.assertEqual(failure["file"], r"C:\project\example.rb")
+        self.assertEqual(failure["line"], 7)
+        self.assertEqual(failure["backtrace"][0], r"C:\build\mrbgems\mruby-dsl\mrblib\config.rb:42")
+
     def test_inheritance_isolated_defaults_and_explicit_null(self) -> None:
         source = """
 class ChildConfig < ExampleConfig
